@@ -1,0 +1,83 @@
+---
+title: "Lab analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+
+#### Data cleaning and preprocessing
+
+```{r}
+rm(list=ls())
+files.sources = list.files("functions")
+invisible(sapply(paste0("functions/",files.sources), function(x) tryCatch(source(x),error=function(e) NA)))
+site.ped=c('APHPPEDHOSP', 'FRBDXPED', 'NUHPED', 'H12OPED', 'RP401PED', 'BCHPED',
+               'CHOPPED', 'KUMCPED', 'MGBPED', 'NWUPED', 'UMICHPED', 'UPITTPED', 'UNCCH')
+
+nm.dat.output <- 'output/dat.clean.lab.ped_without_maternity.Rdata'
+code.dict=read.csv("input/input_loinc.csv")
+code.dict=apply(code.dict, 2, as.character)
+combine.set=c("48065-7","48066-5")
+combine.nm=paste(combine.set, collapse=":")
+code.dict=data.frame(rbind(code.dict, c(combine.nm, "D-dimer")))
+  
+site.register=data.frame(apply(read.csv("input/input_site.csv")[,c("SiteID","Country")], 2, toupper))
+site.rm=c("VA","FICHOS", "NU", "CHOP","BCH", "RP401")
+  
+dat.clean.lab=data_clean('data/', type="Labs", code.dict = code.dict, 
+                          site.register = site.register, site.ped, site.rm, T)
+save(dat.clean.lab, file = nm.dat.output)
+```
+
+
+#### Calculate baseline mean lab values using fixed effect meta-analysis
+
+
+```{r}
+rm(list=ls())
+files.sources = list.files("functions")
+invisible(sapply(paste0("functions/",files.sources), function(x) tryCatch(source(x),error=function(e) NA)))
+site.register=data.frame(apply(read.csv("input/input_site.csv")[,c("SiteID","Country")], 2, toupper))
+site.ped=c('APHPPEDHOSP', 'FRBDXPED', 'NUHPED', 'H12OPED', 'RP401PED', 'BCHPED',
+             'CHOPPED', 'KUMCPED', 'MGBPED', 'NWUPED', 'UMICHPED', 'UPITTPED', 'UNCCH')
+load('output/dat.clean.lab.ped_without_maternity.Rdata')
+
+nm.lab.all=ls(dat.clean.lab[["original"]])
+load("output/report.qc.Rdata")
+lab.qc=report.qc$qc.unit
+lab.qc=lab.qc[-c(11,13,14,16),]
+daymax=14
+lab.range=read.csv("input/input_lab_range.csv")
+tab_meta_origin = table_lab_meta(dat.clean.lab, day=0, nm.lab.all, c('original', 'log'), 
+                               setting = 'sum', method = 'fixed effect')
+
+est_both_origin <- tab_meta_origin[1:19,]
+est_both_log <- tab_meta_origin[20:38,]
+
+write.csv(est_both_origin, file = "output/baseline_mean_origin.csv")
+write.csv(est_both_log, file = "output/baseline_mean_log.csv")
+
+```
+
+
+
+#### Meta-analyze and plot the lab value trajectories
+
+```{r}
+nm.lab.use <- nm.lab.all[-c(6,9:10)]
+lab.range$Units <- as.character(lab.range$Units)
+lab.range$Units[which(lab.range$Units == '10*3/uL')] <- 'K/μL'
+count <- plot_lab_meta_final(dat.clean.lab, lab.range, lab.qc, daymax, nm.lab.use,
+                             'original', method = 'fixed effect')
+```
+
+
+
+
